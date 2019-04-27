@@ -33,16 +33,14 @@ def parse_packet(packet):
         flags = packet[TCP].flags
         if flags & SYN and flags & ACK:
             host_list.add_synack_port(packet[IP].src, packet[TCP].sport)
-
-
     elif UDP in packet:
         host_list.add_host(packet[IP].src)
         host_list.add_host(packet[IP].dst)
         host_list.add_udp_port(packet[IP].src, packet[UDP].sport, Host.PORT_SRC)
         host_list.add_udp_port(packet[IP].dst, packet[UDP].dport, Host.PORT_DST)
     elif IP in packet:
-        host_list.add_host(packet[IP].src)
-        host_list.add_host(packet[IP].dst)
+        host_list.add_host(packet[IP].src, Host.HOST_SRC)
+        host_list.add_host(packet[IP].dst, Host.HOST_DST)
 
     num_packets_parsed += 1
 
@@ -57,6 +55,8 @@ class Host:
 
     PORT_SRC = 0
     PORT_DST = 1
+    HOST_SRC = 2
+    HOST_DST = 3
 
 
 
@@ -157,16 +157,19 @@ class HostList():
         self.dns_resolve = dns_resolve
 
 
-    def add_host(self, ip_addr):
+    def add_host(self, ip_addr, direction):
         global num_packets_parsed
         host = Host(ip_addr)
         if host not in self.host_set:
             print("[+][%i] New Host Found!  IP Addr: %s  " %(num_packets_parsed, ip_addr))
             #thread = threading.Thread(target = host.resolve_name())
             #thread.start()
-            d = host.resolve_name()
-            d.addCallback(host.dns_success)
-            d.addErrback(host.dns_error)
+            if self.dns_resolve == True:
+                d = host.resolve_name()
+                d.addCallback(host.dns_success)
+                d.addErrback(host.dns_error)
+            if direction == Host.HOST_SRC:
+                host.status = Host.STATUS_UP
             self.host_set.add(host)
 
     def add_tcp_port(self, ip_addr, port, port_direction):
