@@ -26,16 +26,16 @@ def parse_packet(packet):
     global num_packets_parsed
 
     if TCP in packet:
-        host_list.add_host(packet[IP].src)
-        host_list.add_host(packet[IP].dst)
+        host_list.add_host(packet[IP].src, Host.HOST_SRC)
+        host_list.add_host(packet[IP].dst, Host.HOST_DST)
         host_list.add_tcp_port(packet[IP].src, packet[TCP].sport, Host.PORT_SRC)
         host_list.add_tcp_port(packet[IP].dst, packet[TCP].dport, Host.PORT_DST)
         flags = packet[TCP].flags
         if flags & SYN and flags & ACK:
             host_list.add_synack_port(packet[IP].src, packet[TCP].sport)
     elif UDP in packet:
-        host_list.add_host(packet[IP].src)
-        host_list.add_host(packet[IP].dst)
+        host_list.add_host(packet[IP].src, Host.HOST_SRC)
+        host_list.add_host(packet[IP].dst, Host.HOST_DST)
         host_list.add_udp_port(packet[IP].src, packet[UDP].sport, Host.PORT_SRC)
         host_list.add_udp_port(packet[IP].dst, packet[UDP].dport, Host.PORT_DST)
     elif IP in packet:
