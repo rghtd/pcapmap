@@ -1,7 +1,7 @@
 # pcapmap
 **pcapmap** utilizes Scapy to quickly parse pcap files for active hosts and ports actively being used. 
 
-#### Usage:
+### Usage:
 ```
 python3 pcapmap.py [-h] [-n] [-t TIMEOUT] pcap_file
 
@@ -19,7 +19,7 @@ optional arguments:
 
 ```
 
-#### Example:
+### Example:
 ```
 python3 pcapmap.py slammer.pcap
 [+][0] New Host Found!  IP Addr: 213.76.212.22
@@ -51,7 +51,7 @@ Ports:
 ```
 
 
-#### Dependencies:
+### Dependencies:
 * python3
 * scapy
 * twisted
