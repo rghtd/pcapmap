@@ -19,9 +19,72 @@ optional arguments:
 
 ```
 
-### Example:
+### Dependencies:
+* python3
+* scapy
+* twisted
+
+### Examples:
+##### HTTP Request Example
+```
+python3 pcapmap.py http.cap
+
+[+][0] New Host Found!  IP Addr: 145.254.160.237
+[+][0] New Host Found!  IP Addr: 65.208.228.223
+[+][12] New Host Found!  IP Addr: 145.253.2.203
+[+][17] New Host Found!  IP Addr: 216.239.59.99
+[-] Reverse Name Resolution Failed!  IP Addr: 216.239.59.99
+[-] Reverse Name Resolution Failed!  IP Addr: 65.208.228.223
+[+] Reverse Name Resolution Complete!  IP Addr: 145.254.160.237  Hostname: dialin-145-254-160-237.pools.arcor-ip.net
+[-] Reverse Name Resolution Failed!  IP Addr: 145.253.2.203
+
+*******************
+* PCAPMAP Results *
+*******************
+
+--------------------------
+
+Ip Addr: 145.253.2.203
+Current Hostname: Unknown
+Status at Capture Time: UP
+Ports:
+    53/udp
+
+--------------------------
+
+Ip Addr: 145.254.160.237
+Current Hostname: dialin-145-254-160-237.pools.arcor-ip.net
+Status at Capture Time: UP
+Ports:
+    3371/tcp
+    3372/tcp
+    3009/udp
+
+--------------------------
+
+Ip Addr: 216.239.59.99
+Current Hostname: Unknown
+Status at Capture Time: UP
+Ports:
+    80/tcp
+
+--------------------------
+
+Ip Addr: 65.208.228.223
+Current Hostname: Unknown
+Status at Capture Time: UP
+Ports:
+    80/tcp    LISTENING (SYNACK verified)
+
+--------------------------
+
+Elapsed Execution Time: 00:00:10.03
+
+```
+##### Slammer Worm Example
 ```
 python3 pcapmap.py slammer.pcap
+
 [+][0] New Host Found!  IP Addr: 213.76.212.22
 [+][0] New Host Found!  IP Addr: 65.165.167.86
 [+] Reverse Name Resolution Complete!  IP Addr: 213.76.212.22  Hostname: 22.212.76.213.dynamic.jazztel.es
@@ -51,7 +114,3 @@ Ports:
 ```
 
 
-### Dependencies:
-* python3
-* scapy
-* twisted
