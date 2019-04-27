@@ -53,7 +53,7 @@ class Host:
     STATUS_UNK = 0
     STATUS_UP = 1
 
-    STATUS_STRINGS = ["UNKNOWN", "UP"]
+    STATUS_STRINGS = ["UNKNOWN (No packets observed originating from host)", "UP (Packets observed originating from host)"]
 
     PORT_SRC = 0
     PORT_DST = 1
