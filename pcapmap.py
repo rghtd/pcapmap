@@ -3,8 +3,8 @@
 from scapy.layers.inet import IP, TCP, UDP
 from scapy.sendrecv import sniff
 from twisted.names import client
-from twisted.internet import defer, reactor, task
-import argparse, socket, time, threading, sys
+from twisted.internet import reactor
+import argparse, time
 
 ip_src = ''
 ip_dest = ''
@@ -49,6 +49,7 @@ class Host:
         self.udp_port_set = set()
         self.hostname = "Unknown"
         self.status = Host.STATUS_UNK
+        self.packet_count = -1
 
     def resolve_name(self):
         #try:
@@ -69,13 +70,17 @@ class Host:
             return answers
 
     def dns_success(self, result):
-        self.hostname = result[0]
-        for res in result:
-            print(res)
+        global num_packets_parsed
+        recordHeader = result[0]
+        name_str_list = str(recordHeader.payload).split(' ')
+        for name_str in name_str_list:
+            if "name=" in name_str:
+                self.hostname = name_str.split('=')[1]
+                print("[+] Reverse Name Resolution Complete!  IP Addr: %s  Hostname: %s" % (self.ip_addr, self.hostname))
 
-    def dns_error(selfs, failure):
+    def dns_error(self, failure):
         import sys
-        sys.stderr.write(str(failure))
+        sys.stderr.write("[-] Reverse Name Resolution Failed!  IP Addr: %s\n" % self.ip_addr)
 
     def reverse_name_for_ip_address(self):
         return '.'.join(reversed(self.ip_addr.split('.'))) + '.in-addr.arpa'
@@ -109,10 +114,11 @@ class Host:
             self.status = Host.STATUS_UP
 
     def print(self, include_hostnames=False):
-        print("Ip Addr: %s" % self.ip_addr, end='')
+        print("Ip Addr: %s" % self.ip_addr)
         if include_hostnames == True:
-            print("    Hostname: %s" % self.hostname, end='')
-        print("    Status: %s" % Host.STATUS_STRINGS[self.status])
+            print("Current Hostname: %s" % self.hostname)
+        print("Status at Capture Time: %s" % Host.STATUS_STRINGS[self.status])
+        print("Ports: ")
         for tport in sorted(self.tcp_port_set):
             print ("    %i/tcp" % tport)
         for uport in sorted(self.udp_port_set):
@@ -131,8 +137,7 @@ class HostList():
         global num_packets_parsed
         host = Host(ip_addr)
         if host not in self.host_set:
-            print("\r", end='')
-            print("[+][%i] New Host Found!  IP Addr: %s  " %(num_packets_parsed, ip_addr), end='')
+            print("[+][%i] New Host Found!  IP Addr: %s  " %(num_packets_parsed, ip_addr))
             #thread = threading.Thread(target = host.resolve_name())
             #thread.start()
             d = host.resolve_name()
@@ -153,13 +158,17 @@ class HostList():
                 host.add_udp_port(port, port_direction)
 
     def print(self):
+        print("\n*******************\n* PCAPMAP Results *\n*******************")
         for host in sorted(self.host_set):
+            print("\n--------------------------\n")
             host.print(self.dns_resolve)
+        print("\n--------------------------")
 
 
 parser = argparse.ArgumentParser(description='Parse pcap file for hosts, protocols, and ports')
 parser.add_argument('pcap_file', nargs=1)
 parser.add_argument('-n', '--no-dns-resolve', required=False, action='store_true', help="Do not resolve hostnames from IP Addresses (default: resolve hostnames)")
+parser.add_argument('-t', '--timeout', required=False, default=20, help="Timeout in seconds (default: 20)")
 args = parser.parse_args()
 
 pcap_file = args.pcap_file
@@ -167,11 +176,12 @@ host_list = HostList(set(), not args.no_dns_resolve)
 
 packets = sniff(offline=pcap_file, prn=parse_packet, store=0)
 
-reactor.callLater(60, reactor.stop); reactor.run()
+if args.no_dns_resolve == False:
+    reactor.callLater(10, reactor.stop); reactor.run()
 
 host_list.print()
 end = time.time()
 hours, rem = divmod(end-start, 3600)
-minutes, seconds = divmod(rem, 60)
+minutes, seconds = divmod(rem, args.timeout)
 print("\nElapsed Execution Time: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
 
