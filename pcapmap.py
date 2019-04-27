@@ -6,6 +6,15 @@ from twisted.names import client
 from twisted.internet import reactor
 import argparse, time
 
+FIN = 0x01
+SYN = 0x02
+RST = 0x04
+PSH = 0x08
+ACK = 0x10
+URG = 0x20
+ECE = 0x40
+CWR = 0x80
+
 ip_src = ''
 ip_dest = ''
 tcp_sport = 0
@@ -21,11 +30,19 @@ def parse_packet(packet):
         host_list.add_host(packet[IP].dst)
         host_list.add_tcp_port(packet[IP].src, packet[TCP].sport, Host.PORT_SRC)
         host_list.add_tcp_port(packet[IP].dst, packet[TCP].dport, Host.PORT_DST)
+        flags = packet[TCP].flags
+        if flags & SYN and flags & ACK:
+            host_list.add_synack_port(packet[IP].src, packet[TCP].sport)
+
+
     elif UDP in packet:
         host_list.add_host(packet[IP].src)
         host_list.add_host(packet[IP].dst)
         host_list.add_udp_port(packet[IP].src, packet[UDP].sport, Host.PORT_SRC)
         host_list.add_udp_port(packet[IP].dst, packet[UDP].dport, Host.PORT_DST)
+    elif IP in packet:
+        host_list.add_host(packet[IP].src)
+        host_list.add_host(packet[IP].dst)
 
     num_packets_parsed += 1
 
@@ -46,6 +63,7 @@ class Host:
     def __init__(self, ip_addr=''):
         self.ip_addr = ip_addr
         self.tcp_port_set = set()
+        self.synack_port_set = set()
         self.udp_port_set = set()
         self.hostname = "Unknown"
         self.status = Host.STATUS_UNK
@@ -106,6 +124,9 @@ class Host:
         if port_direction == Host.PORT_SRC:
             self.status = Host.STATUS_UP
 
+    def add_synack_port(self, synack_port):
+        if synack_port not in self.synack_port_set:
+            self.synack_port_set.add(synack_port)
 
     def add_udp_port(self, udp_port, port_direction):
         if udp_port not in self.udp_port_set:
@@ -120,7 +141,10 @@ class Host:
         print("Status at Capture Time: %s" % Host.STATUS_STRINGS[self.status])
         print("Ports: ")
         for tport in sorted(self.tcp_port_set):
-            print ("    %i/tcp" % tport)
+            print ("    %i/tcp" % tport, end='')
+            if tport in self.synack_port_set:
+                print("    LISTENING (SYNACK verified)", end='')
+            print("")
         for uport in sorted(self.udp_port_set):
             print ("    %i/udp" % uport)
 
@@ -150,6 +174,12 @@ class HostList():
         for host in self.host_set:
             if host == temp_host:
                 host.add_tcp_port(port, port_direction)
+
+    def add_synack_port(self, ip_addr, port):
+        temp_host = Host(ip_addr)
+        for host in self.host_set:
+            if host == temp_host:
+                host.add_synack_port(port)
 
     def add_udp_port(self, ip_addr, port, port_direction):
         temp_host = Host(ip_addr)
