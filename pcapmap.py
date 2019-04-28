@@ -24,51 +24,108 @@ start = time.time()
 
 def parse_packet(packet):
     global num_packets_parsed
+    src_host = None
+    src_socket = None
+    dst_host = None
+    dst_socket = None
+    socket_connection = None
+    if IP in packet:
+        src_host = host_list.add_or_find_host(Host(packet[IP].src), Host.PORT_SRC)
+        src_host.status = Host.STATUS_UP
+        dst_host = host_list.add_or_find_host(Host(packet[IP].dst), Host.PORT_DST)
+        if TCP in packet:
+            src_socket = Socket(src_host.ip_addr, packet[TCP].sport, Socket.TRANS_TCP, Socket.STATUS_UP)
+            dst_socket = Socket(dst_host.ip_addr, packet[TCP].dport, Socket.TRANS_TCP, Socket.STATUS_UNK)
+            src_socket = src_host.add_or_find_socket(src_socket)
+            dst_socket = dst_host.add_or_find_socket(dst_socket)
+            flags = packet[TCP].flags
+            if flags & SYN and flags & ACK:
+                src_socket.stype = Socket.TYPE_SERVER
 
-    if TCP in packet:
-        host_list.add_host(packet[IP].src, Host.HOST_SRC)
-        host_list.add_host(packet[IP].dst, Host.HOST_DST)
-        host_list.add_tcp_port(packet[IP].src, packet[TCP].sport, Host.PORT_SRC)
-        host_list.add_tcp_port(packet[IP].dst, packet[TCP].dport, Host.PORT_DST)
-        flags = packet[TCP].flags
-        if flags & SYN and flags & ACK:
-            host_list.add_synack_port(packet[IP].src, packet[TCP].sport)
-    elif UDP in packet:
-        host_list.add_host(packet[IP].src, Host.HOST_SRC)
-        host_list.add_host(packet[IP].dst, Host.HOST_DST)
-        host_list.add_udp_port(packet[IP].src, packet[UDP].sport, Host.PORT_SRC)
-        host_list.add_udp_port(packet[IP].dst, packet[UDP].dport, Host.PORT_DST)
-    elif IP in packet:
-        host_list.add_host(packet[IP].src, Host.HOST_SRC)
-        host_list.add_host(packet[IP].dst, Host.HOST_DST)
+        elif UDP in packet:
+            src_socket = Socket(src_host.ip_addr, packet[UDP].sport, Socket.TRANS_UDP, Socket.STATUS_UP)
+            dst_socket = Socket(dst_host.ip_addr, packet[UDP].dport, Socket.TRANS_UDP, Socket.STATUS_UNK)
+            src_socket = src_host.add_or_find_socket(src_socket)
+            dst_socket = dst_host.add_or_find_socket(dst_socket)
+        if TCP in packet or UDP in packet:
+            socket_connection = SocketConnection(src_socket, dst_socket)
+            src_socket.add_or_find_socket_connection(socket_connection)
+            dst_socket.add_or_find_socket_connection(socket_connection)
+
 
     num_packets_parsed += 1
 
-class Port:
+class SocketConnection:
+    def __init__(self, socket1, socket2):
+        self.socket_set = set()
+        self.socket_set.add(socket1)
+        self.socket_set.add(socket2)
+        self.socket1 = socket1
+        self.socket2 = socket2
 
-    TRANS_UNK = 0
-    TRANS_UDP = 1
-    TRANS_TCP = 2
-
-    LTYPE_UNK = 0
-    LTYPE_CLIENT = 1
-    LTYPE_SERVER = 2
-
-    LSTATUS_UNK = 0
-    LSTATUS_UP = 1
-
-    RSTATUS_UNK = 0
-    RSTATUS_UP = 1
+    def __hash__(self):
+        hashstr = ""
+        for socket in sorted(self.socket_set):
+            hashstr += socket.ip_addr
+            hashstr += str(socket.port)
+        return hash(hashstr)
 
 
-    def __init__(self, local_ip, local_port=None, ltype=LTYPE_UNK, lstatus=LSTATUS_UNK, remote_ip=set(), remote_port=set(), rstatus=RSTATUS_UNK):
-        self.local_ip = local_ip
-        self.local_port = local_port
-        self.ltype = ltype
-        self.lstatus = lstatus
-        self.remote_ip = remote_ip
-        self.remote_port = remote_port
-        self.rstatus = rstatus
+class Socket:
+
+    TRANS_UDP = 0
+    TRANS_TCP = 1
+
+    TRANS_STRINGS = [ "udp" , "tcp" ]
+
+    TYPE_UNK = 0
+    TYPE_CLIENT = 1
+    TYPE_SERVER = 2
+
+    STATUS_UNK = 0
+    STATUS_UP = 1
+
+
+    def __init__(self, ip_addr, port, trans, status=STATUS_UNK, stype=TYPE_UNK):
+        self.ip_addr = ip_addr
+        self.port = port
+        self.trans = trans
+        self.status = status
+        self.socket_connection_set = set()
+        self.stype = stype
+
+    def __hash__(self):
+        return hash(str(self.port) + self.ip_addr)
+
+    def __lt__(self, other):
+        return self.ip_addr + str(self.port) < self.ip_addr + str(other.port)
+
+    def __eq__(self, other):
+        return self.ip_addr + str(self.port) == self.ip_addr + str(other.port)
+
+    def __gt__(self, other):
+        return self.ip_addr + str(self.port) > self.ip_addr + str(other.port)
+
+
+    def add_or_find_socket_connection(self, socket_connection):
+        identifying_socket = None
+        if socket_connection.socket1 == self:
+            identifying_socket = socket_connection.socket2
+        else:
+            identifying_socket  = socket_connection.socket1
+        for socket_conn in self.socket_connection_set:
+            if identifying_socket in socket_conn.socket_set:
+                return socket_conn
+        
+        self.socket_connection_set.add(socket_connection)
+        return socket_connection
+
+    def get_string_trans(self):
+        return Socket.TRANS_STRINGS[self.trans]
+
+    def set_type(self, stype):
+        self.stype = stype
+
 
 
 class Host:
@@ -93,6 +150,7 @@ class Host:
         self.hostname = "Unknown"
         self.status = Host.STATUS_UNK
         self.packet_count = -1
+        self.socket_set = set()
 
     def resolve_name(self):
         #try:
@@ -143,36 +201,34 @@ class Host:
     def __hash__(self):
         return hash(self.ip_addr)
 
-    def add_tcp_port(self, tcp_port, port_direction):
-        if tcp_port not in self.tcp_port_set:
-            self.tcp_port_set.add(tcp_port)
-        if port_direction == Host.PORT_SRC:
-            self.status = Host.STATUS_UP
+    def add_or_find_socket(self, socket):
+        if socket not in self.socket_set:
+            self.socket_set.add(socket)
+            return socket
+        else:
+            for ret_socket in self.socket_set:
+                if ret_socket == socket:
+                    return ret_socket
 
-    def add_synack_port(self, synack_port):
-        if synack_port not in self.synack_port_set:
-            self.synack_port_set.add(synack_port)
 
-    def add_udp_port(self, udp_port, port_direction):
-        if udp_port not in self.udp_port_set:
-            self.udp_port_set.add(udp_port)
-        if port_direction == Host.PORT_SRC:
-            self.status = Host.STATUS_UP
-
-    def print(self, include_hostnames=False):
+    def print_new(self, include_hostnames=False):
         print("Ip Addr: %s" % self.ip_addr)
         if include_hostnames == True:
             print("Current Hostname: %s" % self.hostname)
         print("Status at Capture Time: %s" % Host.STATUS_STRINGS[self.status])
         print("Ports: ")
-        for tport in sorted(self.tcp_port_set):
-            print ("    %i/tcp" % tport, end='')
-            if tport in self.synack_port_set:
-                print("    LISTENING (SYNACK verified)", end='')
+        for socket in sorted(self.socket_set):
+            print("    %i/%s" % (socket.port, socket.get_string_trans()), end='')
+            if socket.stype == Socket.TYPE_SERVER:
+                print("  <-.  LISTENING (SYNACK verified)")
+                for sock_conn in socket.socket_connection_set:
+                    print_sock = None
+                    if sock_conn.socket1 == socket:
+                       print_sock = sock_conn.socket2
+                    else:
+                        print_sock = sock_conn.socket1
+                    print("                `->  %s:%i" %(print_sock.ip_addr, print_sock.port))
             print("")
-        for uport in sorted(self.udp_port_set):
-            print ("    %i/udp" % uport)
-
 
 
 class HostList():
@@ -182,13 +238,10 @@ class HostList():
         self.dns_resolve = dns_resolve
 
 
-    def add_host(self, ip_addr, direction):
+    def add_or_find_host(self, host, direction):
         global num_packets_parsed
-        host = Host(ip_addr)
         if host not in self.host_set:
-            print("[+][%i] New Host Found!  IP Addr: %s  " %(num_packets_parsed, ip_addr))
-            #thread = threading.Thread(target = host.resolve_name())
-            #thread.start()
+            print("[+][%i] New Host Found!  IP Addr: %s  " %(num_packets_parsed, host.ip_addr))
             if self.dns_resolve == True:
                 d = host.resolve_name()
                 d.addCallback(host.dns_success)
@@ -196,30 +249,17 @@ class HostList():
             if direction == Host.HOST_SRC:
                 host.status = Host.STATUS_UP
             self.host_set.add(host)
-
-    def add_tcp_port(self, ip_addr, port, port_direction):
-        temp_host = Host(ip_addr)
-        for host in self.host_set:
-            if host == temp_host:
-                host.add_tcp_port(port, port_direction)
-
-    def add_synack_port(self, ip_addr, port):
-        temp_host = Host(ip_addr)
-        for host in self.host_set:
-            if host == temp_host:
-                host.add_synack_port(port)
-
-    def add_udp_port(self, ip_addr, port, port_direction):
-        temp_host = Host(ip_addr)
-        for host in self.host_set:
-            if host == temp_host:
-                host.add_udp_port(port, port_direction)
+            return host
+        else:
+            for ret_host in self.host_set:
+                if ret_host == host:
+                    return ret_host
 
     def print(self):
         print("\n*******************\n* PCAPMAP Results *\n*******************")
         for host in sorted(self.host_set):
             print("\n--------------------------\n")
-            host.print(self.dns_resolve)
+            host.print_new(self.dns_resolve)
         print("\n--------------------------")
 
 
