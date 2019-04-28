@@ -44,6 +44,31 @@ def parse_packet(packet):
 
     num_packets_parsed += 1
 
+class Port:
+
+    TRANS_UNK = 0
+    TRANS_UDP = 1
+    TRANS_TCP = 2
+
+    LTYPE_UNK = 0
+    LTYPE_CLIENT = 1
+    LTYPE_SERVER = 2
+
+    LSTATUS_UNK = 0
+    LSTATUS_UP = 1
+
+    RSTATUS_UNK = 0
+    RSTATUS_UP = 1
+
+
+    def __init__(self, local_ip, local_port=None, ltype=LTYPE_UNK, lstatus=LSTATUS_UNK, remote_ip=set(), remote_port=set(), rstatus=RSTATUS_UNK):
+        self.local_ip = local_ip
+        self.local_port = local_port
+        self.ltype = ltype
+        self.lstatus = lstatus
+        self.remote_ip = remote_ip
+        self.remote_port = remote_port
+        self.rstatus = rstatus
 
 
 class Host:
