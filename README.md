@@ -23,6 +23,9 @@ optional arguments:
 * python3
 * scapy
 * twisted
+```
+pip3 install -r requirements.txt
+```
 
 ### Examples:
 ##### HTTP Request Example
