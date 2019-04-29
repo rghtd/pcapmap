@@ -41,6 +41,8 @@ def parse_packet(packet):
             flags = packet[TCP].flags
             if flags & SYN and flags & ACK:
                 src_socket.stype = Socket.TYPE_SERVER
+            elif flags & SYN and not flags & ACK:
+                src_socket.stype = Socket.TYPE_CLIENT
 
         elif UDP in packet:
             src_socket = Socket(src_host.ip_addr, packet[UDP].sport, Socket.TRANS_UDP, Socket.STATUS_UP)
@@ -220,14 +222,33 @@ class Host:
         for socket in sorted(self.socket_set):
             print("    %i/%s" % (socket.port, socket.get_string_trans()), end='')
             if socket.stype == Socket.TYPE_SERVER:
-                print("  <-.  LISTENING (SYNACK verified)")
-                for sock_conn in socket.socket_connection_set:
-                    print_sock = None
-                    if sock_conn.socket1 == socket:
-                       print_sock = sock_conn.socket2
-                    else:
-                        print_sock = sock_conn.socket1
-                    print("                `->  %s:%i" %(print_sock.ip_addr, print_sock.port))
+                print("  <--  LISTENING (SYNACK observed)")
+            elif socket.stype == Socket.TYPE_CLIENT:
+                print("  +--  CLIENT (SYN observed)")
+            elif socket.stype == Socket.TYPE_UNK:
+                print("  ---  UNK")
+            last_print_sock = None
+            sock_counter = 0
+            num_socks = len(socket.socket_connection_set)
+            for sock_conn in socket.socket_connection_set:
+                print_sock = None
+                if sock_conn.socket1 == socket:
+                   print_sock = sock_conn.socket2
+                else:
+                    print_sock = sock_conn.socket1
+                if sock_counter == 0:
+                    if socket.stype == Socket.TYPE_SERVER:
+                        print("                --+  %s :%i" %(print_sock.ip_addr, print_sock.port), end='')
+                    elif socket.stype == Socket.TYPE_CLIENT:
+                        print("                -->  %s :%i" %(print_sock.ip_addr, print_sock.port), end='')
+                    elif socket.stype == Socket.TYPE_UNK:
+                        print("                ---  %s :%i" %(print_sock.ip_addr, print_sock.port), end='')
+                else:
+                    print(" :%i" % print_sock.port, end='')
+                last_print_sock = print_sock
+                sock_counter += 1
+                if num_socks == sock_counter:
+                    print("")
             print("")
 
 
