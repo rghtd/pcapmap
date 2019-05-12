@@ -1,5 +1,5 @@
 # pcapmap
-**pcapmap** utilizes Scapy to quickly parse pcap files for active hosts and ports actively being used. 
+**pcapmap** utilizes Scapy to quickly parse pcap files for active hosts and ports. 
 
 ### Usage:
 ```
