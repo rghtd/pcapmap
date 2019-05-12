@@ -4,7 +4,7 @@ from scapy.layers.inet import IP, TCP, UDP
 from scapy.sendrecv import sniff
 from twisted.names import client
 from twisted.internet import reactor
-import argparse, time
+import argparse, time, sys
 
 FIN = 0x01
 SYN = 0x02
@@ -20,42 +20,43 @@ ip_dest = ''
 tcp_sport = 0
 tcp_dport = 0
 num_packets_parsed = 0
-start = time.time()
 
-def parse_packet(packet):
-    global num_packets_parsed
-    src_host = None
-    src_socket = None
-    dst_host = None
-    dst_socket = None
-    socket_connection = None
-    if IP in packet:
-        src_host = host_list.add_or_find_host(Host(packet[IP].src), Host.PORT_SRC)
-        src_host.status = Host.STATUS_UP
-        dst_host = host_list.add_or_find_host(Host(packet[IP].dst), Host.PORT_DST)
-        if TCP in packet:
-            src_socket = Socket(src_host.ip_addr, packet[TCP].sport, Socket.TRANS_TCP, Socket.STATUS_UP)
-            dst_socket = Socket(dst_host.ip_addr, packet[TCP].dport, Socket.TRANS_TCP, Socket.STATUS_UNK)
-            src_socket = src_host.add_or_find_socket(src_socket)
-            dst_socket = dst_host.add_or_find_socket(dst_socket)
-            flags = packet[TCP].flags
-            if flags & SYN and flags & ACK:
-                src_socket.stype = Socket.TYPE_SERVER
-            elif flags & SYN and not flags & ACK:
-                src_socket.stype = Socket.TYPE_CLIENT
+def parse_packet(host_list):
+    def parse_packet_int(packet):
+        global num_packets_parsed
+        src_host = None
+        src_socket = None
+        dst_host = None
+        dst_socket = None
+        socket_connection = None
+        if IP in packet:
+            src_host = host_list.add_or_find_host(Host(packet[IP].src), Host.PORT_SRC)
+            src_host.status = Host.STATUS_UP
+            dst_host = host_list.add_or_find_host(Host(packet[IP].dst), Host.PORT_DST)
+            if TCP in packet:
+                src_socket = Socket(src_host.ip_addr, packet[TCP].sport, Socket.TRANS_TCP, Socket.STATUS_UP)
+                dst_socket = Socket(dst_host.ip_addr, packet[TCP].dport, Socket.TRANS_TCP, Socket.STATUS_UNK)
+                src_socket = src_host.add_or_find_socket(src_socket)
+                dst_socket = dst_host.add_or_find_socket(dst_socket)
+                flags = packet[TCP].flags
+                if flags & SYN and flags & ACK:
+                    src_socket.stype = Socket.TYPE_SERVER
+                elif flags & SYN and not flags & ACK:
+                    src_socket.stype = Socket.TYPE_CLIENT
 
-        elif UDP in packet:
-            src_socket = Socket(src_host.ip_addr, packet[UDP].sport, Socket.TRANS_UDP, Socket.STATUS_UP)
-            dst_socket = Socket(dst_host.ip_addr, packet[UDP].dport, Socket.TRANS_UDP, Socket.STATUS_UNK)
-            src_socket = src_host.add_or_find_socket(src_socket)
-            dst_socket = dst_host.add_or_find_socket(dst_socket)
-        if TCP in packet or UDP in packet:
-            socket_connection = SocketConnection(src_socket, dst_socket)
-            src_socket.add_or_find_socket_connection(socket_connection)
-            dst_socket.add_or_find_socket_connection(socket_connection)
+            elif UDP in packet:
+                src_socket = Socket(src_host.ip_addr, packet[UDP].sport, Socket.TRANS_UDP, Socket.STATUS_UP)
+                dst_socket = Socket(dst_host.ip_addr, packet[UDP].dport, Socket.TRANS_UDP, Socket.STATUS_UNK)
+                src_socket = src_host.add_or_find_socket(src_socket)
+                dst_socket = dst_host.add_or_find_socket(dst_socket)
+            if TCP in packet or UDP in packet:
+                socket_connection = SocketConnection(src_socket, dst_socket)
+                src_socket.add_or_find_socket_connection(socket_connection)
+                dst_socket.add_or_find_socket_connection(socket_connection)
 
 
-    num_packets_parsed += 1
+        num_packets_parsed += 1
+    return parse_packet_int
 
 class SocketConnection:
     def __init__(self, socket1, socket2):
@@ -283,24 +284,28 @@ class HostList():
             host.print_new(self.dns_resolve)
         print("\n--------------------------")
 
+def main(argv):
+    start = time.time()
+    parser = argparse.ArgumentParser(description='Parse pcap file for hosts, protocols, and ports')
+    parser.add_argument('pcap_file', nargs=1)
+    parser.add_argument('-n', '--no-dns-resolve', required=False, action='store_true', help="Do not resolve hostnames from IP Addresses (default: resolve hostnames)")
+    parser.add_argument('-t', '--timeout', required=False, default=20, help="Timeout in seconds (default: 20)")
+    args = parser.parse_args(argv)
 
-parser = argparse.ArgumentParser(description='Parse pcap file for hosts, protocols, and ports')
-parser.add_argument('pcap_file', nargs=1)
-parser.add_argument('-n', '--no-dns-resolve', required=False, action='store_true', help="Do not resolve hostnames from IP Addresses (default: resolve hostnames)")
-parser.add_argument('-t', '--timeout', required=False, default=20, help="Timeout in seconds (default: 20)")
-args = parser.parse_args()
+    pcap_file = args.pcap_file
+    host_list = HostList(set(), not args.no_dns_resolve)
 
-pcap_file = args.pcap_file
-host_list = HostList(set(), not args.no_dns_resolve)
+    packets = sniff(offline=pcap_file, prn=parse_packet(host_list), store=0)
 
-packets = sniff(offline=pcap_file, prn=parse_packet, store=0)
+    if args.no_dns_resolve == False:
+        reactor.callLater(10, reactor.stop); reactor.run()
 
-if args.no_dns_resolve == False:
-    reactor.callLater(10, reactor.stop); reactor.run()
+    host_list.print()
+    end = time.time()
+    hours, rem = divmod(end-start, 3600)
+    minutes, seconds = divmod(rem, args.timeout)
+    print("\nElapsed Execution Time: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
 
-host_list.print()
-end = time.time()
-hours, rem = divmod(end-start, 3600)
-minutes, seconds = divmod(rem, args.timeout)
-print("\nElapsed Execution Time: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
 
+if __name__ == "__main__":
+    main(sys.argv[1:])
